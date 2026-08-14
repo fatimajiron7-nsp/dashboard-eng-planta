@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Energía No Generada (ENG) — Planta FV</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .viz-root {
+    display: block;
+    min-height: 100vh;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    --page-plane:     #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;
+    --series-1-wash:  rgba(42,120,214,0.10);
+    --series-1-light: #b7d3f6;
+    --warning:        #fab219;
+    --warning-text:   #8a5a00;
+    --good:           #0ca30c;
+    --good-text:      #006300;
+    --critical:       #d03b3b;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      --page-plane:     #0d0d0d;
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-1-wash:  rgba(57,135,229,0.14);
+      --series-1-light: #184f95;
+      --warning:        #fab219;
+      --warning-text:   #fab219;
+      --good:           #0ca30c;
+      --good-text:      #0ca30c;
+      --critical:       #e66767;
+      color-scheme: dark;
+    }
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
+
+  header.page-header { margin-bottom: 18px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--series-1); margin: 0 0 6px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; font-weight: 650; }
+  .subtitle { color: var(--text-secondary); font-size: 14px; margin: 0; }
+
+  .note-banner {
+    background: var(--series-1-wash);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 16px 0 24px;
+    line-height: 1.55;
+  }
+  .note-banner strong { color: var(--text-primary); }
+
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin: 0 0 20px;
+  }
+  .last-update { font-size: 12px; color: var(--text-muted); }
+  .last-update span { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  button.simulate {
+    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    background: var(--series-1); color: #fff; border: none;
+    padding: 9px 16px; border-radius: 8px;
+    transition: opacity .15s ease;
+  }
+  button.simulate:hover { opacity: .88; }
+  button.simulate:active { opacity: .74; }
+
+  .kpi-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px;
+  }
+  @media (max-width: 920px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .stat-tile .label {
+    font-size: 12px; color: var(--text-secondary); margin: 0 0 8px; font-weight: 500;
+  }
+  .stat-tile .value {
+    font-size: 25px; font-weight: 650; line-height: 1.1; margin: 0;
+    font-variant-numeric: proportional-nums;
+  }
+  .stat-tile .sub { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
+
+  .coverage-card { margin-bottom: 20px; }
+  .coverage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .coverage-head h2 { font-size: 14px; margin: 0; font-weight: 650; }
+  .coverage-badge {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+    color: var(--warning-text);
+  }
+  .coverage-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); }
+  .meter-track {
+    margin-top: 12px; height: 10px; border-radius: 6px; background: var(--series-1-light); overflow: hidden;
+  }
+  .meter-fill { height: 100%; background: var(--warning); border-radius: 6px; }
+  .coverage-foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+  .coverage-note { font-size: 12px; color: var(--text-secondary); margin: 10px 0 0; line-height: 1.5; }
+
+  .charts-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 12px; }
+  .charts-grid.two-col { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 820px) { .charts-grid.two-col { grid-template-columns: 1fr; } }
+
+  .card h2 { font-size: 14px; margin: 0 0 2px; font-weight: 650; }
+  .card .card-sub { font-size: 12px; color: var(--text-muted); margin: 0 0 14px; }
+
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .axis-label { font-size: 10px; fill: var(--text-muted); }
+  .gridline { stroke: var(--gridline); stroke-width: 1; }
+  .baseline { stroke: var(--baseline); stroke-width: 1; }
+  .line-series { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .end-dot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+  .end-label { font-size: 12px; font-weight: 650; fill: var(--text-primary); }
+  .crosshair { stroke: var(--baseline); stroke-width: 1; opacity: 0; pointer-events: none; }
+  .hover-dot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; opacity: 0; pointer-events: none; }
+  .hit-rect { fill: transparent; }
+
+  .bar { fill: var(--series-1); }
+  .bar.other { fill: var(--baseline); }
+  .bar.hovered { opacity: .82; }
+  .bar-label-cat { font-size: 12px; fill: var(--text-secondary); }
+  .bar-label-val { font-size: 12px; font-weight: 650; fill: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+  .tooltip {
+    position: fixed; pointer-events: none; z-index: 50;
+    background: var(--text-primary); color: var(--surface-1);
+    font-size: 12px; padding: 8px 10px; border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    opacity: 0; transform: translate(-50%, -110%); transition: opacity .08s ease;
+    max-width: 220px; line-height: 1.45;
+  }
+  .tooltip.visible { opacity: 1; }
+  .tooltip .t-value { font-weight: 700; }
+  .tooltip .t-label { color: var(--text-muted); }
+
+  table.records { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.records th {
+    text-align: left; font-weight: 600; color: var(--text-secondary);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .03em;
+    padding: 8px 10px; border-bottom: 1px solid var(--gridline);
+  }
+  table.records td {
+    padding: 9px 10px; border-bottom: 1px solid var(--gridline); color: var(--text-primary);
+  }
+  table.records td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.records .pending { color: var(--text-muted); font-style: italic; }
+  table.records tr.is-new { animation: flashRow 1.8s ease; }
+  @keyframes flashRow {
+    0% { background: var(--series-1-wash); }
+    100% { background: transparent; }
+  }
+  .stat-tile.flash { animation: flashTile 1.8s ease; }
+  @keyframes flashTile {
+    0% { box-shadow: 0 0 0 2px var(--series-1) inset; }
+    100% { box-shadow: 0 0 0 0px transparent inset; }
+  }
+
+  footer.page-footer {
+    margin-top: 28px; font-size: 12px; color: var(--text-muted); line-height: 1.6;
+  }
+  footer.page-footer code {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 5px; font-size: 11px;
+  }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="wrap">
+    <header class="page-header">
+      <p class="eyebrow">Dashboard compartido · lee el Excel en cada carga</p>
+      <h1>Energía No Generada (ENG) — Planta FV</h1>
+      <p class="subtitle">Seguimiento de indisponibilidad de equipos por bloque (STS), causa y duración.</p>
+    </header>
+
+    <div class="note-banner">
+      <strong>Sobre estos datos:</strong> esta página vive en un servidor en la nube, disponible para todo
+      el equipo. Cada vez que se abre o se actualiza, vuelve a leer <code>Base ENG NSP.xlsx</code> desde el
+      enlace compartido de OneDrive — nunca muestra datos guardados de antes, aunque puede tardar unos
+      segundos o minutos en reflejar un cambio muy reciente mientras OneDrive termina de sincronizarlo.
+      Ahora mismo lee <strong id="note-total-eventos">189</strong> eventos de la hoja <code>BD_ENG</code>.
+      Como todavía se está llenando "Generación esperada" y "Generación real" evento por evento, la energía
+      (MWh) solo está calculada para <strong id="note-cobertura">1 de 189</strong> eventos — por eso este
+      dashboard destaca lo que sí está completo hoy (frecuencia y horas de indisponibilidad por causa y
+      equipo) y muestra la energía como una barra de <em>cobertura</em> que irá creciendo según se validen
+      más eventos.
+    </div>
+
+    <div class="toolbar">
+      <div class="last-update">Leído del Excel: <span id="last-update-time">—</span></div>
+      <button class="simulate" id="refresh-btn">↻ Actualizar ahora</button>
+    </div>
+
+    <div class="kpi-row" id="kpi-row"></div>
+
+    <div class="card coverage-card">
+      <div class="coverage-head">
+        <h2>Cobertura de energía calculada</h2>
+        <span class="coverage-badge" id="coverage-badge"><span class="dot"></span><span id="coverage-badge-text">0.5% de los eventos</span></span>
+      </div>
+      <div class="meter-track"><div class="meter-fill" id="coverage-fill" style="width:0%"></div></div>
+      <div class="coverage-foot">
+        <span id="coverage-count">1 de 189 eventos con Generación esperada/real</span>
+        <span id="coverage-eng">10.0 MWh · $700</span>
+      </div>
+      <p class="coverage-note">Este medidor sube cada vez que un evento tiene ambos campos de generación
+        llenos en el Excel — no cuando el evento simplemente se registra.</p>
+    </div>
+
+    <div class="charts-grid">
+      <div class="card">
+        <h2>Eventos por semana</h2>
+        <p class="card-sub">Frecuencia de indisponibilidad registrada</p>
+        <div id="line-chart"></div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="card">
+        <h2>Horas de indisponibilidad por causa</h2>
+        <p class="card-sub">Acumulado del período, de mayor a menor (top 8 + resto agrupado)</p>
+        <div id="bar-causa"></div>
+      </div>
+    </div>
+
+    <div class="charts-grid two-col">
+      <div class="card">
+        <h2>Eventos por bloque (STS)</h2>
+        <p class="card-sub">Cantidad de eventos registrados</p>
+        <div id="bar-sts"></div>
+      </div>
+      <div class="card">
+        <h2>Eventos por tipo de equipo</h2>
+        <p class="card-sub">Cantidad de eventos registrados</p>
+        <div id="bar-equipo"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Últimos eventos</h2>
+      <p class="card-sub">Los 10 más recientes</p>
+      <table class="records">
+        <thead>
+          <tr>
+            <th>Fecha inicio</th><th>Bloque</th><th>Equipo</th><th>Causa</th>
+            <th style="text-align:right">Duración (h)</th><th style="text-align:right">ENG (MWh)</th>
+          </tr>
+        </thead>
+        <tbody id="records-body"></tbody>
+      </table>
+    </div>
+
+    <footer class="page-footer">
+      Servido desde la nube por <code>servidor.py</code>, que lee <code>Base ENG NSP.xlsx</code> a través
+      del enlace compartido de OneDrive en cada carga de la página. La pestaña se actualiza sola cada
+      3 minutos; el botón "Actualizar ahora" fuerza una lectura inmediata.
+    </footer>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script id="datos-reales" type="application/json">__DATOS_JSON__</script>
+<script>
+(function () {
+  "use strict";
+
+  var payload = JSON.parse(document.getElementById("datos-reales").textContent);
+  var registros = payload.registros;
+
+  var tooltipEl = document.getElementById("tooltip");
+
+  function fmt(n, d) {
+    d = d === undefined ? 1 : d;
+    return Number(n).toLocaleString("es-NI", { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function fmtInt(n) { return Number(n).toLocaleString("es-NI"); }
+  function escapeHtml(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+  function mondayOf(dateStr) {
+    var d = new Date(dateStr.replace(" ", "T"));
+    var day = d.getDay();
+    var offset = (day + 6) % 7;
+    d.setDate(d.getDate() - offset);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function computeAggregates(regs) {
+    var totalHoras = 0, totalEng = 0, totalPerdida = 0, conEnergia = 0;
+    var porSemana = {}, porCausa = {}, porSts = {}, porEquipo = {};
+    regs.forEach(function (r) {
+      totalHoras += r.duracion_h;
+      totalEng += r.eng_mwh;
+      totalPerdida += r.perdida_usd;
+      if (r.energia_calculada) conEnergia++;
+      var wk = mondayOf(r.fecha_inicio);
+      porSemana[wk] = (porSemana[wk] || 0) + 1;
+      porCausa[r.causa] = (porCausa[r.causa] || 0) + r.duracion_h;
+      porSts[r.sts] = (porSts[r.sts] || 0) + 1;
+      porEquipo[r.tipo_equipo] = (porEquipo[r.tipo_equipo] || 0) + 1;
+    });
+
+    var semanas = Object.keys(porSemana).sort().map(function (wk) {
+      return { semana: wk, eventos: porSemana[wk] };
+    });
+    var causaArr = Object.keys(porCausa).map(function (k) { return { causa: k, duracion_h: porCausa[k] }; })
+      .sort(function (a, b) { return b.duracion_h - a.duracion_h; });
+    var stsArr = Object.keys(porSts).map(function (k) { return { sts: k, eventos: porSts[k] }; })
+      .sort(function (a, b) { return b.eventos - a.eventos; });
+    var equipoArr = Object.keys(porEquipo).map(function (k) { return { tipo_equipo: k, eventos: porEquipo[k] }; })
+      .sort(function (a, b) { return b.eventos - a.eventos; });
+    var ultimos = regs.slice().sort(function (a, b) {
+      return b.fecha_inicio.localeCompare(a.fecha_inicio);
+    }).slice(0, 10);
+
+    return {
+      totalEventos: regs.length, totalHoras: totalHoras,
+      promedioHoras: regs.length ? totalHoras / regs.length : 0,
+      totalEng: totalEng, totalPerdida: totalPerdida,
+      conEnergia: conEnergia, coberturaPct: regs.length ? (conEnergia / regs.length) * 100 : 0,
+      semanas: semanas, porCausa: causaArr, porSts: stsArr, porEquipo: equipoArr, ultimos: ultimos
+    };
+  }
+
+  function foldTop(arr, key, n) {
+    if (arr.length <= n) return arr;
+    var top = arr.slice(0, n);
+    var restoVal = arr.slice(n).reduce(function (a, d) { return a + d[key]; }, 0);
+    var restoCount = arr.length - n;
+    var otro = {}; otro[key] = restoVal;
+    otro.causa = "Otras causas (" + restoCount + ")";
+    otro.__other = true;
+    top.push(otro);
+    return top;
+  }
+
+  // ---------- KPIs ----------
+  function renderKpis(agg, flash) {
+    var row = document.getElementById("kpi-row");
+    var tiles = [
+      { label: "Eventos registrados", value: fmtInt(agg.totalEventos) },
+      { label: "Horas de indisponibilidad", value: fmt(agg.totalHoras, 1) + " h" },
+      { label: "Duración promedio por evento", value: fmt(agg.promedioHoras, 2) + " h" },
+      { label: "ENG registrada", value: fmt(agg.totalEng, 1) + " MWh", sub: "$" + fmtInt(Math.round(agg.totalPerdida)) + " · cifra parcial" }
+    ];
+    row.innerHTML = "";
+    tiles.forEach(function (t) {
+      var div = document.createElement("div");
+      div.className = "card stat-tile" + (flash ? " flash" : "");
+      var label = document.createElement("p"); label.className = "label"; label.textContent = t.label;
+      var value = document.createElement("p"); value.className = "value"; value.textContent = t.value;
+      div.appendChild(label); div.appendChild(value);
+      if (t.sub) {
+        var sub = document.createElement("p"); sub.className = "sub"; sub.textContent = t.sub;
+        div.appendChild(sub);
+      }
+      row.appendChild(div);
+    });
+  }
+
+  function renderCoverage(agg) {
+    document.getElementById("coverage-fill").style.width = Math.max(2, agg.coberturaPct) + "%";
+    document.getElementById("coverage-badge-text").textContent = fmt(agg.coberturaPct, 1) + "% de los eventos";
+    document.getElementById("coverage-count").textContent =
+      agg.conEnergia + " de " + agg.totalEventos + " eventos con Generación esperada/real";
+    document.getElementById("coverage-eng").textContent = fmt(agg.totalEng, 1) + " MWh · $" + fmtInt(Math.round(agg.totalPerdida));
+    document.getElementById("note-total-eventos").textContent = agg.totalEventos;
+    document.getElementById("note-cobertura").textContent = agg.conEnergia + " de " + agg.totalEventos;
+  }
+
+  // ---------- Tooltip ----------
+  function showTooltip(x, y, html) {
+    tooltipEl.innerHTML = "";
+    var frag = document.createElement("div"); frag.innerHTML = html;
+    while (frag.firstChild) tooltipEl.appendChild(frag.firstChild);
+    tooltipEl.style.left = x + "px"; tooltipEl.style.top = y + "px";
+    tooltipEl.classList.add("visible");
+  }
+  function hideTooltip() { tooltipEl.classList.remove("visible"); }
+  function ttRow(labelText, valueText) {
+    var d = document.createElement("div");
+    var v = document.createElement("span"); v.className = "t-value"; v.textContent = valueText;
+    var l = document.createElement("span"); l.className = "t-label"; l.textContent = " " + labelText;
+    d.appendChild(v); d.appendChild(l);
+    return d.outerHTML;
+  }
+
+  // ---------- Line chart ----------
+  function renderLineChart(agg) {
+    var host = document.getElementById("line-chart");
+    var W = 1080, H = 240, ML = 32, MR = 40, MT = 16, MB = 28;
+    var plotW = W - ML - MR, plotH = H - MT - MB;
+    var data = agg.semanas;
+    if (!data.length) { host.innerHTML = ""; return; }
+
+    var maxVal = Math.max.apply(null, data.map(function (d) { return d.eventos; })) || 1;
+    var niceMax = Math.ceil(maxVal / 5) * 5 || 5;
+    var stepX = data.length > 1 ? plotW / (data.length - 1) : 0;
+    function xAt(i) { return ML + stepX * i; }
+    function yAt(v) { return MT + plotH - (v / niceMax) * plotH; }
+
+    var gridSteps = 4, gridlines = "";
+    for (var g = 0; g <= gridSteps; g++) {
+      var gv = Math.round((niceMax / gridSteps) * g);
+      var gy = yAt(gv);
+      gridlines += '<line class="gridline" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + gy + '" y2="' + gy + '"></line>';
+      gridlines += '<text class="axis-label" x="' + (W - MR + 8) + '" y="' + (gy + 3) + '">' + gv + '</text>';
+    }
+
+    var pathD = data.map(function (d, i) {
+      return (i === 0 ? "M" : "L") + xAt(i).toFixed(1) + "," + yAt(d.eventos).toFixed(1);
+    }).join(" ");
+
+    var xLabelsEvery = Math.max(1, Math.ceil(data.length / 8));
+    var xLabels = "";
+    data.forEach(function (d, i) {
+      if (i % xLabelsEvery === 0 || i === data.length - 1) {
+        xLabels += '<text class="axis-label" x="' + xAt(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + d.semana.slice(5) + '</text>';
+      }
+    });
+
+    var last = data[data.length - 1];
+    var lastX = xAt(data.length - 1), lastY = yAt(last.eventos);
+
+    var hitRects = data.map(function (d, i) {
+      var x0 = i === 0 ? ML : (xAt(i - 1) + xAt(i)) / 2;
+      var x1 = i === data.length - 1 ? W - MR : (xAt(i) + xAt(i + 1)) / 2;
+      return '<rect class="hit-rect" data-i="' + i + '" x="' + x0 + '" y="' + MT + '" width="' + (x1 - x0) + '" height="' + plotH + '"></rect>';
+    }).join("");
+
+    host.innerHTML =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">' +
+        '<line class="baseline" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + (MT + plotH) + '" y2="' + (MT + plotH) + '"></line>' +
+        gridlines +
+        '<path class="line-series" d="' + pathD + '"></path>' +
+        '<circle class="end-dot" cx="' + lastX + '" cy="' + lastY + '" r="4"></circle>' +
+        '<text class="end-label" x="' + (lastX - 8) + '" y="' + (lastY - 12) + '" text-anchor="end">' + last.eventos + '</text>' +
+        xLabels +
+        '<line class="crosshair" id="line-crosshair" x1="0" x2="0" y1="' + MT + '" y2="' + (MT + plotH) + '"></line>' +
+        '<circle class="hover-dot" id="line-hover-dot" r="5"></circle>' +
+        hitRects +
+      '</svg>';
+
+    var svg = host.querySelector("svg");
+    var crosshair = host.querySelector("#line-crosshair");
+    var hoverDot = host.querySelector("#line-hover-dot");
+    host.querySelectorAll(".hit-rect").forEach(function (rect) {
+      rect.addEventListener("pointermove", function () {
+        var i = +rect.getAttribute("data-i");
+        var d = data[i];
+        var px = xAt(i), py = yAt(d.eventos);
+        crosshair.setAttribute("x1", px); crosshair.setAttribute("x2", px); crosshair.style.opacity = 1;
+        hoverDot.setAttribute("cx", px); hoverDot.setAttribute("cy", py); hoverDot.style.opacity = 1;
+        var pt = svg.createSVGPoint(); pt.x = px; pt.y = py;
+        var screenPt = pt.matrixTransform(svg.getScreenCTM());
+        showTooltip(screenPt.x, screenPt.y, ttRow("semana del " + d.semana, d.eventos + " eventos"));
+      });
+      rect.addEventListener("pointerleave", function () {
+        crosshair.style.opacity = 0; hoverDot.style.opacity = 0; hideTooltip();
+      });
+    });
+  }
+
+  // ---------- Bar chart ----------
+  function renderBarChart(hostId, data, catKey, valKey, valSuffix) {
+    var host = document.getElementById(hostId);
+    var barH = 20, gap = 14, ML = 190, MR = 60, MT = 6;
+    var W = 1080;
+    var H = MT + data.length * (barH + gap);
+    var plotW = W - ML - MR;
+    var maxVal = Math.max.apply(null, data.map(function (d) { return d[valKey]; })) || 1;
+
+    var bars = "", labels = "", hitAreas = "";
+    data.forEach(function (d, i) {
+      var y = MT + i * (barH + gap);
+      var w = Math.max(2, (d[valKey] / maxVal) * plotW);
+      var cls = "bar" + (d.__other ? " other" : "");
+      bars += '<rect class="' + cls + '" data-i="' + i + '" x="' + ML + '" y="' + y + '" width="' + w + '" height="' + barH + '" rx="4"></rect>';
+      labels += '<text class="bar-label-cat" x="' + (ML - 10) + '" y="' + (y + barH / 2 + 4) + '" text-anchor="end">' + escapeHtml(d[catKey]) + '</text>';
+      labels += '<text class="bar-label-val" x="' + (ML + w + 8) + '" y="' + (y + barH / 2 + 4) + '">' + fmt(d[valKey], valSuffix === "h" ? 1 : 0) + (valSuffix ? " " + valSuffix : "") + '</text>';
+      hitAreas += '<rect class="hit-rect" data-i="' + i + '" x="0" y="' + (y - gap / 2) + '" width="' + W + '" height="' + (barH + gap) + '"></rect>';
+    });
+
+    host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">' + bars + labels + hitAreas + '</svg>';
+
+    host.querySelectorAll(".hit-rect").forEach(function (rect) {
+      var i = +rect.getAttribute("data-i");
+      var barEl = host.querySelector('.bar[data-i="' + i + '"]');
+      rect.addEventListener("pointermove", function () {
+        barEl.classList.add("hovered");
+        var bbox = barEl.getBoundingClientRect();
+        showTooltip(bbox.left + bbox.width, bbox.top, ttRow(data[i][catKey], fmt(data[i][valKey], valSuffix === "h" ? 1 : 0) + (valSuffix ? " " + valSuffix : "")));
+      });
+      rect.addEventListener("pointerleave", function () { barEl.classList.remove("hovered"); hideTooltip(); });
+    });
+  }
+
+  // ---------- Table ----------
+  function renderTable(agg, newId) {
+    var body = document.getElementById("records-body");
+    body.innerHTML = "";
+    agg.ultimos.forEach(function (r) {
+      var tr = document.createElement("tr");
+      if (newId && r.id === newId) tr.className = "is-new";
+      var engCell = document.createElement("td");
+      engCell.className = "num";
+      if (r.energia_calculada) engCell.textContent = fmt(r.eng_mwh, 2);
+      else { engCell.textContent = "pendiente"; engCell.classList.add("pending"); }
+
+      var cells = [r.fecha_inicio, r.sts, r.tipo_equipo + " · " + r.codigo_equipo, r.causa,
+        { text: fmt(r.duracion_h, 2), num: true }];
+      cells.forEach(function (c) {
+        var td = document.createElement("td");
+        if (typeof c === "object") { td.className = "num"; td.textContent = c.text; }
+        else { td.textContent = c; }
+        tr.appendChild(td);
+      });
+      tr.appendChild(engCell);
+      body.appendChild(tr);
+    });
+  }
+
+  function setLastUpdate(text) { document.getElementById("last-update-time").textContent = text; }
+
+  function renderAll(flashKpis, newId) {
+    var agg = computeAggregates(registros);
+    renderKpis(agg, flashKpis);
+    renderCoverage(agg);
+    renderLineChart(agg);
+    renderBarChart("bar-causa", foldTop(agg.porCausa, "duracion_h", 8), "causa", "duracion_h", "h");
+    renderBarChart("bar-sts", agg.porSts, "sts", "eventos");
+    renderBarChart("bar-equipo", agg.porEquipo, "tipo_equipo", "eventos");
+    renderTable(agg, newId);
+  }
+
+  var AUTO_REFRESH_MS = 3 * 60 * 1000; // 3 minutos
+  var leidoEn = new Date(payload.generado_en);
+
+  function actualizarRelojLectura() {
+    var segundos = Math.round((Date.now() - leidoEn.getTime()) / 1000);
+    var texto;
+    if (segundos < 5) texto = "justo ahora";
+    else if (segundos < 60) texto = "hace " + segundos + " s";
+    else texto = "hace " + Math.round(segundos / 60) + " min";
+    setLastUpdate(texto + " (" + leidoEn.toLocaleTimeString("es-NI", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) + ")");
+  }
+
+  document.getElementById("refresh-btn").addEventListener("click", function () {
+    window.location.reload();
+  });
+
+  renderAll(false, null);
+  actualizarRelojLectura();
+  setInterval(actualizarRelojLectura, 1000);
+  setTimeout(function () { window.location.reload(); }, AUTO_REFRESH_MS);
+})();
+</script>
+</body>
+</html>
